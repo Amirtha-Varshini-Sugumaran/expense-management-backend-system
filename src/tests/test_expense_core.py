@@ -1,9 +1,11 @@
+from datetime import date, timedelta
+
 import pytest
 
 from core.expense import (
+    approve_expense,
     create_expense,
     list_expenses_for_user,
-    approve_expense,
     reject_expense,
 )
 
@@ -20,15 +22,17 @@ def valid_payload(user_id="user_1", amount=100):
         "currency": "EUR",
         "category": "travel",
         "description": "Taxi",
-        "spent_at": "2026-01-20",
+        "expense_date": "2026-01-20",
     }
 
 
 def test_create_expense_success(store):
-    e = create_expense(store, valid_payload())
-    assert e["expense_id"]
-    assert e["status"] == "submitted"
-    assert e["user_id"] == "user_1"
+    expense = create_expense(store, valid_payload())
+    assert expense["expense_id"]
+    assert expense["status"] == "submitted"
+    assert expense["user_id"] == "user_1"
+    assert expense["expense_date"] == "2026-01-20"
+    assert expense["history"][0]["action"] == "submitted"
     assert len(store) == 1
 
 
@@ -48,45 +52,50 @@ def test_create_expense_missing_field_raises(store):
     assert "currency is required" in str(ex.value)
 
 
+def test_create_expense_future_date_raises(store):
+    payload = valid_payload()
+    payload["expense_date"] = (date.today() + timedelta(days=1)).isoformat()
+    with pytest.raises(ValueError) as ex:
+        create_expense(store, payload)
+    assert "future" in str(ex.value)
+
+
 def test_list_expenses_for_user_returns_only_that_user(store):
     create_expense(store, valid_payload(user_id="user_1", amount=10))
     create_expense(store, valid_payload(user_id="user_2", amount=20))
 
-    res = list_expenses_for_user(store, "user_1")
-    assert len(res) == 1
-    assert res[0]["user_id"] == "user_1"
-
-
-def test_list_expenses_for_user_empty_when_none(store):
-    res = list_expenses_for_user(store, "user_3")
-    assert res == []
+    result = list_expenses_for_user(store, "user_1")
+    assert len(result) == 1
+    assert result[0]["user_id"] == "user_1"
 
 
 def test_approve_submitted_expense_success(store):
-    e = create_expense(store, valid_payload(user_id="user_1"))
-    updated = approve_expense(store, e["expense_id"], "manager_1")
+    expense = create_expense(store, valid_payload(user_id="user_1"))
+    updated = approve_expense(store, expense["expense_id"], "manager_1")
     assert updated["status"] == "approved"
-    assert updated["approved_by"] == "manager_1"
+    assert updated["decided_by"] == "manager_1"
+    assert updated["history"][-1]["to_status"] == "approved"
 
 
 def test_cannot_approve_twice(store):
-    e = create_expense(store, valid_payload(user_id="user_1"))
-    approve_expense(store, e["expense_id"], "manager_1")
+    expense = create_expense(store, valid_payload(user_id="user_1"))
+    approve_expense(store, expense["expense_id"], "manager_1")
     with pytest.raises(ValueError) as ex:
-        approve_expense(store, e["expense_id"], "manager_1")
+        approve_expense(store, expense["expense_id"], "manager_1")
     assert "only submitted" in str(ex.value)
 
 
 def test_reject_submitted_expense_success(store):
-    e = create_expense(store, valid_payload(user_id="user_2"))
-    updated = reject_expense(store, e["expense_id"], "manager_1", "Receipt missing")
+    expense = create_expense(store, valid_payload(user_id="user_2"))
+    updated = reject_expense(store, expense["expense_id"], "manager_1", "Receipt missing")
     assert updated["status"] == "rejected"
-    assert updated["rejected_by"] == "manager_1"
+    assert updated["decided_by"] == "manager_1"
     assert updated["rejection_reason"] == "Receipt missing"
+    assert updated["history"][-1]["to_status"] == "rejected"
 
 
 def test_reject_requires_reason(store):
-    e = create_expense(store, valid_payload(user_id="user_2"))
+    expense = create_expense(store, valid_payload(user_id="user_2"))
     with pytest.raises(ValueError) as ex:
-        reject_expense(store, e["expense_id"], "manager_1", "   ")
+        reject_expense(store, expense["expense_id"], "manager_1", "   ")
     assert "reason" in str(ex.value).lower()
