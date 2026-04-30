@@ -1,4 +1,4 @@
-# Expense Management Backend System (EMBS)
+# Expense Management Backend API
 
 A backend API for managing employee expense submissions, approvals, rejections, and audit-ready records.
 
