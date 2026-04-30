@@ -6,3 +6,6 @@ __pycache__/
 venv/
 check_db.py
 local_only/
+*.db
+*.db-journal
+pytest-cache-files-*/

@@ -1,69 +1,43 @@
-from core.expense import (
-    create_expense,
-    list_expenses_for_user,
-    approve_expense,
-    reject_expense,
-)
+from core.expense import approve_expense, create_expense, list_expenses_for_user, reject_expense
 
 
 def main():
     store = []
 
-    expense1 = create_expense(
+    taxi = create_expense(
         store,
         {
-            "user_id": "user_1",
-            "amount": 100,
+            "user_id": "emp_001",
+            "amount": 42.80,
             "currency": "EUR",
             "category": "travel",
-            "description": "Taxi to client meeting",
-            "spent_at": "2026-01-20",
+            "description": "Taxi from Dublin Airport to client office",
+            "expense_date": "2026-04-10",
+            "receipt_name": "airport-taxi.pdf",
         },
     )
 
-    expense2 = create_expense(
+    lunch = create_expense(
         store,
         {
-            "user_id": "user_2",
-            "amount": 50,
+            "user_id": "emp_001",
+            "amount": 18.50,
             "currency": "EUR",
-            "category": "food",
-            "description": "Lunch with client",
-            "spent_at": "2026-01-21",
+            "category": "meals",
+            "description": "Lunch during implementation workshop",
+            "expense_date": "2026-04-12",
+            "receipt_name": "workshop-lunch.jpg",
         },
     )
 
-    print("Created expenses:")
-    print(expense1)
-    print(expense2)
+    print("Submitted expenses:")
+    print(list_expenses_for_user(store, "emp_001"))
 
-    print("\nAll expenses in store:")
-    print(store)
+    print("\nManager approves the taxi:")
+    print(approve_expense(store, taxi["expense_id"], "mgr_001"))
 
-    print("\nExpenses for user_1:")
-    print(list_expenses_for_user(store, "user_1"))
-
-    print("\nExpenses for user_2:")
-    print(list_expenses_for_user(store, "user_2"))
-
-    print("\nExpenses for user_3 (none expected):")
-    print(list_expenses_for_user(store, "user_3"))
-
-    # ---- Step 7 tests (must be inside main) ----
-    id1 = expense1["expense_id"]
-    id2 = expense2["expense_id"]
-
-    print("\nApprove expense1 by manager_1:")
-    print(approve_expense(store, id1, "manager_1"))
-
-    print("\nTry approving same expense again (should fail):")
-    try:
-        print(approve_expense(store, id1, "manager_1"))
-    except ValueError as e:
-        print("Expected error:", e)
-
-    print("\nReject expense2 by manager_1:")
-    print(reject_expense(store, id2, "manager_1", "Receipt missing"))
+    print("\nManager rejects the lunch:")
+    print(reject_expense(store, lunch["expense_id"], "mgr_001", "Receipt image is unreadable"))
 
 
 if __name__ == "__main__":

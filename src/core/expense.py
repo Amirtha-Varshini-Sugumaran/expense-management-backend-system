@@ -1,3 +1,4 @@
+from datetime import date, datetime, timezone
 import uuid
 
 """
@@ -35,16 +36,40 @@ def validate_status(expense):
     return status
 
 
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
+def _validate_category(category):
+    allowed = {"travel", "meals", "office", "software", "training", "client", "other"}
+    clean = category.strip().lower()
+    if clean not in allowed:
+        raise ValueError("category must be one of: " + ", ".join(sorted(allowed)))
+    return clean
+
+
+def _validate_expense_date(value):
+    try:
+        parsed = date.fromisoformat(value.strip())
+    except ValueError:
+        raise ValueError("expense_date must use ISO format YYYY-MM-DD")
+    if parsed > date.today():
+        raise ValueError("expense_date cannot be in the future")
+    return parsed.isoformat()
+
+
 # ---------- payload validation + normalization ----------
 
 def validate_expense_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dictionary")
 
-    required_fields = ["user_id", "amount", "currency", "category", "description", "spent_at"]
+    required_fields = ["user_id", "amount", "currency", "category", "description"]
     for field in required_fields:
         if field not in payload:
             raise ValueError(f"{field} is required")
+    if "expense_date" not in payload and "spent_at" not in payload:
+        raise ValueError("expense_date is required")
 
     validate_user_id(payload["user_id"])
 
@@ -55,20 +80,27 @@ def validate_expense_payload(payload):
     if amount <= 0:
         raise ValueError("amount must be > 0")
 
-    for field in ["currency", "category", "description", "spent_at"]:
+    for field in ["currency", "category", "description"]:
         value = payload[field]
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field} must be a non-empty string")
+
+    raw_date = payload.get("expense_date") or payload.get("spent_at")
+    if not isinstance(raw_date, str) or not raw_date.strip():
+        raise ValueError("expense_date must be a non-empty string")
+    _validate_expense_date(raw_date)
 
 
 def normalize_expense_payload(payload):
     return {
         "user_id": payload["user_id"].strip(),
         "amount": float(payload["amount"]),
-        "currency": payload["currency"].strip(),
-        "category": payload["category"].strip(),
+        "currency": payload["currency"].strip().upper(),
+        "category": _validate_category(payload["category"]),
         "description": payload["description"].strip(),
-        "spent_at": payload["spent_at"].strip(),
+        "expense_date": _validate_expense_date(payload.get("expense_date") or payload.get("spent_at")),
+        "receipt_name": payload.get("receipt_name"),
+        "receipt_url": payload.get("receipt_url"),
     }
 
 
@@ -84,6 +116,21 @@ def create_expense(store, payload):
         "expense_id": str(uuid.uuid4()),
         **clean,
         "status": "submitted",
+        "submitted_at": _utcnow(),
+        "decided_at": None,
+        "decided_by": None,
+        "manager_comment": None,
+        "rejection_reason": None,
+        "history": [
+            {
+                "from_status": None,
+                "to_status": "submitted",
+                "action": "submitted",
+                "acted_by": clean["user_id"],
+                "acted_at": _utcnow(),
+                "comment": "Expense submitted",
+            }
+        ],
     }
 
     store.append(expense)
@@ -118,7 +165,19 @@ def approve_expense(store, expense_id, acted_by_user_id):
         raise ValueError("only submitted expenses can be approved or rejected")
 
     expense["status"] = "approved"
-    expense["approved_by"] = acted_by_user_id
+    expense["decided_by"] = acted_by_user_id
+    expense["decided_at"] = _utcnow()
+    expense["manager_comment"] = None
+    expense["history"].append(
+        {
+            "from_status": "submitted",
+            "to_status": "approved",
+            "action": "approved",
+            "acted_by": acted_by_user_id,
+            "acted_at": _utcnow(),
+            "comment": None,
+        }
+    )
     return expense
 
 
@@ -135,6 +194,17 @@ def reject_expense(store, expense_id, acted_by_user_id, reason):
         raise ValueError("only submitted expenses can be approved or rejected")
 
     expense["status"] = "rejected"
-    expense["rejected_by"] = acted_by_user_id
+    expense["decided_by"] = acted_by_user_id
+    expense["decided_at"] = _utcnow()
     expense["rejection_reason"] = reason.strip()
+    expense["history"].append(
+        {
+            "from_status": "submitted",
+            "to_status": "rejected",
+            "action": "rejected",
+            "acted_by": acted_by_user_id,
+            "acted_at": _utcnow(),
+            "comment": reason.strip(),
+        }
+    )
     return expense
