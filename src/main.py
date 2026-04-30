@@ -1,4 +1,4 @@
-from core.expense import approve_expense, create_expense, list_expenses_for_user, reject_expense
+from src.core.expense import approve_expense, create_expense, list_expenses_for_user, reject_expense
 
 
 def main():

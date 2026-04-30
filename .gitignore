@@ -9,3 +9,4 @@ local_only/
 *.db
 *.db-journal
 pytest-cache-files-*/
+ENGINEERING_NOTES.md
